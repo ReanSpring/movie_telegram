@@ -39,6 +39,24 @@ class DbMovieService {
   }
 
   /**
+   * Update movie watch URL
+   */
+  async updateMovieUrl(movieId, watchUrl) {
+    const stmt = db.prepare('UPDATE movies SET watch_url = ? WHERE id = ?');
+    const info = stmt.run(watchUrl, movieId);
+    return info.changes > 0;
+  }
+
+  /**
+   * Delete a movie from the database
+   */
+  async deleteMovie(movieId) {
+    const stmt = db.prepare('DELETE FROM movies WHERE id = ?');
+    const info = stmt.run(movieId);
+    return info.changes > 0;
+  }
+
+  /**
    * Helper to format local movie for the message
    * Since we might have different field names than TMDb
    */

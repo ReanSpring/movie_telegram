@@ -43,6 +43,8 @@ const formatMovieMessage = (movie) => {
     }
   }
   
+  message += `\n🆔 ID: \`${movie.id}\``;
+  
   return message;
 };
 
@@ -61,8 +63,8 @@ const formatMovieList = (movies, limit = 10) => {
     const year = movie.release_date ? new Date(movie.release_date).getFullYear() : 'N/A';
     const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
     
-    message += `${index + 1}. *${title}* (${year}) - ⭐ ${rating}\n`;
-    message += `   ID: ${movie.id}\n\n`;
+    message += `${index + 1}. *${escapeMarkdown(title)}* (${year}) - ⭐ ${rating}\n`;
+    message += `   ID: \`${movie.id}\`\n\n`;
   });
   
   if (movies.length > limit) {
@@ -74,5 +76,6 @@ const formatMovieList = (movies, limit = 10) => {
 
 module.exports = {
   formatMovieMessage,
-  formatMovieList
+  formatMovieList,
+  escapeMarkdown
 };

@@ -46,6 +46,12 @@ const createMovieKeyboard = (movie) => {
     // Optional: Log that web_app button is skipped due to non-HTTPS URL
     // console.log('Skipping Watch in Telegram button: APP_URL is not HTTPS');
   }
+
+  // Delete option (Admin only conceptually, but for now available)
+  buttons.push([{
+    text: '🗑 Delete Movie',
+    callback_data: `delete:${movie.id}`
+  }]);
   
   return {
     inline_keyboard: buttons

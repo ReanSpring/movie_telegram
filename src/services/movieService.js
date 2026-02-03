@@ -41,6 +41,20 @@ class MovieService {
   }
 
   /**
+   * Update a movie URL in the local DB
+   */
+  async updateMovieUrl(movieId, watchUrl) {
+    return await dbMovieService.updateMovieUrl(movieId, watchUrl);
+  }
+
+  /**
+   * Delete a movie from the local DB
+   */
+  async deleteMovie(movieId) {
+    return await dbMovieService.deleteMovie(movieId);
+  }
+
+  /**
    * Get full poster URL (Handles both paths and full URLs)
    */
   getPosterUrl(posterPath) {

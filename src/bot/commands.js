@@ -2,7 +2,21 @@ const movieService = require('../services/movieService');
 const tmdbService = require('../services/tmdbService');
 const sessionService = require('../services/sessionService');
 const telegramService = require('../services/telegramService');
-const { formatMovieList, formatMovieMessage } = require('../utils/formatters');
+const { formatMovieList, formatMovieMessage, escapeMarkdown } = require('../utils/formatters');
+const fs = require('fs');
+const path = require('path');
+
+const logFilePath = path.join(__dirname, '../../bot_debug.log');
+
+const logToFile = (message) => {
+  const timestamp = new Date().toISOString();
+  const logEntry = `[${timestamp}] ${message}\n`;
+  try {
+    fs.appendFileSync(logFilePath, logEntry);
+  } catch (err) {
+    console.error('Failed to write to log file:', err);
+  }
+};
 
 /**
  * Handle /start command
@@ -226,6 +240,67 @@ const handlePost = async (msg, match) => {
 };
 
 /**
+ * Handle /editurl command
+ */
+const handleEditUrl = async (msg, match) => {
+  const chatId = msg.chat.id;
+  const movieId = match[1];
+  const newUrl = match[2];
+
+  if (!movieId || isNaN(movieId) || !newUrl) {
+    await telegramService.sendMessage(chatId, '❌ Usage: `/editurl <movieId> <newUrl>`\n\nExample: `/editurl 1 https://example.com/movie`');
+    return;
+  }
+
+  try {
+    const success = await movieService.updateMovieUrl(movieId, newUrl);
+    if (success) {
+      await telegramService.sendMessage(chatId, `✅ Watch URL updated successfully for movie ID: ${movieId}`);
+    } else {
+      await telegramService.sendMessage(chatId, `❌ Movie with ID ${movieId} not found.`);
+    }
+  } catch (error) {
+    console.error('Error updating movie URL:', error);
+    await telegramService.sendMessage(chatId, '❌ Failed to update movie URL.');
+  }
+};
+
+/**
+ * Handle /deletemovie command
+ */
+const handleDeleteMovie = async (msg, match) => {
+  const chatId = msg.chat.id;
+  const movieIdStr = match[1];
+  const movieId = parseInt(movieIdStr);
+
+  console.log(`/deletemovie command received for ID: ${movieIdStr} (parsed: ${movieId})`);
+  logToFile(`/deletemovie command received for ID: ${movieIdStr} (parsed: ${movieId})`);
+
+  if (!movieId || isNaN(movieId)) {
+    await telegramService.sendMessage(chatId, '❌ Usage: `/deletemovie <movieId>`\n\nExample: `/deletemovie 1`');
+    return;
+  }
+
+  try {
+    const movie = await movieService.getMovieDetails(movieId);
+    const success = await movieService.deleteMovie(movieId);
+    console.log(`Delete result for ID ${movieId} (${movie ? movie.title : 'unknown'}): ${success}`);
+    logToFile(`Delete result for ID ${movieId} (${movie ? movie.title : 'unknown'}): ${success}`);
+    
+    if (success) {
+      const title = movie ? movie.title : 'Unknown';
+      await telegramService.sendMessage(chatId, `✅ Movie *${escapeMarkdown(title)}* (ID ${movieId}) deleted successfully.`);
+    } else {
+      await telegramService.sendMessage(chatId, `❌ Movie with ID ${movieId} not found.`);
+    }
+  } catch (error) {
+    console.error(`Error deleting movie: ${error.message}`);
+    logToFile(`Error deleting movie: ${error.message}\n${error.stack}`);
+    await telegramService.sendMessage(chatId, `❌ Failed to delete movie ID ${movieId}. Mention if it exists or check the ID.`);
+  }
+};
+
+/**
  * Handle /watch command - View movie with watch links
  */
 const handleWatch = async (msgOrChatId, movieId) => {
@@ -308,6 +383,26 @@ const handleCallbackQuery = async (callbackQuery) => {
       console.error('Error fetching TMDb details for import:', error);
       await telegramService.sendMessage(chatId, '❌ Failed to fetch movie details. Please try again.');
     }
+  } else if (data.startsWith('delete:')) {
+    const movieIdStr = data.split(':')[1];
+    const movieId = parseInt(movieIdStr);
+    console.log(`Delete button clicked for ID: ${movieIdStr} (parsed: ${movieId})`);
+    logToFile(`Delete button clicked for ID: ${movieIdStr} (parsed: ${movieId})`);
+    try {
+      const movie = await movieService.getMovieDetails(movieId);
+      const success = await movieService.deleteMovie(movieId);
+      console.log(`Delete button result for ID ${movieId} (${movie ? movie.title : 'unknown'}): ${success}`);
+      logToFile(`Delete button result for ID ${movieId} (${movie ? movie.title : 'unknown'}): ${success}`);
+      if (success) {
+        const title = movie ? movie.title : 'Unknown';
+        await telegramService.sendMessage(chatId, `✅ Movie *${escapeMarkdown(title)}* (ID ${movieId}) deleted successfully.`);
+      } else {
+        await telegramService.sendMessage(chatId, `❌ Movie with ID ${movieId} not found.`);
+      }
+    } catch (error) {
+      logToFile(`Error in delete callback: ${error.message}\n${error.stack}`);
+      await telegramService.sendMessage(chatId, '❌ Failed to delete movie.');
+    }
   }
 
   // Answer callback query to stop loading state in client
@@ -329,6 +424,8 @@ const registerCommands = () => {
   bot.onText(/\/addmovie (.+)/, handleAddMovie);
   bot.onText(/\/import (.+)/, handleImport);
   bot.onText(/\/post (\d+)/, handlePost);
+  bot.onText(/\/editurl (\d+) (.+)/, handleEditUrl);
+  bot.onText(/\/deletemovie (\d+)/, handleDeleteMovie);
 
   // Handle all incoming messages for interactive sessions
   bot.on('message', handleIncomingMessage);

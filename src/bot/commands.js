@@ -26,13 +26,24 @@ const handleStart = async (msg) => {
   const welcomeMessage = `
 🎬 *Welcome to Movie Bot!*
 
-I can help you discover and share movies to your Telegram channel.
+I can help you discover movies, browse TMDb, and share them to your Telegram channel.
 
-*Available Commands:*
-/trending - Get trending movies
-/search <movie name> - Search for movies
-/watch <movie id> - View movie with watch links
-/post <movie id> - Post a movie to the channel
+*Local Database Commands:*
+/mymovies - View all movies in your local collection
+/trending - Get recently added movies from local database
+/search <name> - Search your local collection
+/watch <id> - View local movie with watch links
+/post <id> - Post local movie to the channel
+/addmovie <data> - Add movie manually
+/editurl <id> <url> - Update movie watch link
+/deletemovie <id> - Delete a movie
+
+*TMDb (The Movie Database) Commands:*
+/tmdbtrending - Fetch top trending movies directly from TMDb
+/tmdb <name> - Search any movie on TMDb
+/watchtmdb <tmdbId> - View details for a TMDb movie
+/import <name> - Search TMDb and import to your database
+
 /help - Show this help message
 
 Let's get started! 🍿
@@ -49,16 +60,53 @@ const handleHelp = async (msg) => {
 };
 
 /**
- * Handle /trending command
+ * Handle /mymovies or /list command - view all local movies
+ */
+const handleMyMovies = async (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    const movies = await movieService.getAllLocalMovies(50);
+    if (movies.length === 0) {
+      await telegramService.sendMessage(
+        chatId,
+        '📁 *Your Local Collection is Empty!*\n\nUse `/tmdb <name>` or `/import <name>` to find and add movies.'
+      );
+      return;
+    }
+
+    const message = formatMovieList(movies, 50, `Your Local Movies (${movies.length})`);
+    const { createMovieListKeyboard } = require('../utils/keyboard');
+    const keyboard = createMovieListKeyboard(movies, 15);
+
+    await telegramService.sendMessage(chatId, message, {
+      reply_markup: keyboard
+    });
+  } catch (error) {
+    console.error('Error fetching local movies:', error);
+    await telegramService.sendMessage(chatId, '❌ Failed to fetch your local movies.');
+  }
+};
+
+/**
+ * Handle /trending command (local DB)
  */
 const handleTrending = async (msg) => {
   const chatId = msg.chat.id;
 
   try {
-    await telegramService.sendMessage(chatId, '🔍 Fetching trending movies...');
+    await telegramService.sendMessage(chatId, '🔍 Fetching trending movies from local database...');
     
     const movies = await movieService.getTrendingMovies();
-    const message = formatMovieList(movies);
+    if (movies.length === 0) {
+      await telegramService.sendMessage(
+        chatId,
+        'ℹ️ Your local movie database is currently empty.\n\nTry `/tmdbtrending` to see trending movies on TMDb or `/import <movie>` to add some!'
+      );
+      return;
+    }
+
+    const message = formatMovieList(movies, 10, 'Local Trending Movies');
     const { createMovieListKeyboard } = require('../utils/keyboard');
     const keyboard = createMovieListKeyboard(movies);
 
@@ -72,7 +120,30 @@ const handleTrending = async (msg) => {
 };
 
 /**
- * Handle /search command
+ * Handle /tmdbtrending command (TMDb)
+ */
+const handleTmdbTrending = async (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    await telegramService.sendMessage(chatId, '🔥 Fetching trending movies from TMDb...');
+    
+    const movies = await movieService.getTmdbTrending(1);
+    const message = formatMovieList(movies, 10, 'TMDb Trending Movies');
+    const { createTmdbListKeyboard } = require('../utils/keyboard');
+    const keyboard = createTmdbListKeyboard(movies);
+
+    await telegramService.sendMessage(chatId, message, {
+      reply_markup: keyboard
+    });
+  } catch (error) {
+    console.error('Error fetching TMDb trending:', error);
+    await telegramService.sendMessage(chatId, '❌ Failed to fetch trending movies from TMDb. Please try again.');
+  }
+};
+
+/**
+ * Handle /search command (local DB with TMDb fallback option)
  */
 const handleSearch = async (msg, match) => {
   const chatId = msg.chat.id;
@@ -84,16 +155,21 @@ const handleSearch = async (msg, match) => {
   }
 
   try {
-    await telegramService.sendMessage(chatId, `🔍 Searching for "${query}"...`);
+    await telegramService.sendMessage(chatId, `🔍 Searching local collection for "${query}"...`);
     
     const movies = await movieService.searchMovies(query);
     
     if (movies.length === 0) {
-      await telegramService.sendMessage(chatId, `❌ No movies found for "${query}"`);
+      const { createSearchFallbackKeyboard } = require('../utils/keyboard');
+      await telegramService.sendMessage(
+        chatId,
+        `❌ No local movies found for "*${escapeMarkdown(query)}*".\n\nWould you like to search on TMDb?`,
+        { reply_markup: createSearchFallbackKeyboard(query) }
+      );
       return;
     }
 
-    const message = formatMovieList(movies);
+    const message = formatMovieList(movies, 10, `Local Results for "${query}"`);
     const { createMovieListKeyboard } = require('../utils/keyboard');
     const keyboard = createMovieListKeyboard(movies);
 
@@ -103,6 +179,81 @@ const handleSearch = async (msg, match) => {
   } catch (error) {
     console.error('Error searching movies:', error);
     await telegramService.sendMessage(chatId, '❌ Failed to search movies. Please try again later.');
+  }
+};
+
+/**
+ * Handle /tmdb command - Search directly on TMDb
+ */
+const handleTmdbSearch = async (msg, match) => {
+  const chatId = msg.chat.id;
+  const query = match[1];
+
+  if (!query || query.trim() === '') {
+    await telegramService.sendMessage(chatId, '❌ Please provide a movie name to search on TMDb.\n\nExample: /tmdb Avatar');
+    return;
+  }
+
+  try {
+    await telegramService.sendMessage(chatId, `🔍 Searching TMDb for "${query}"...`);
+    const movies = await movieService.searchTmdb(query, 1);
+
+    if (movies.length === 0) {
+      await telegramService.sendMessage(chatId, `❌ No movies found on TMDb for "${query}"`);
+      return;
+    }
+
+    const message = formatMovieList(movies, 10, `TMDb Results for "${query}"`);
+    const { createTmdbListKeyboard } = require('../utils/keyboard');
+    const keyboard = createTmdbListKeyboard(movies);
+
+    await telegramService.sendMessage(chatId, message, {
+      reply_markup: keyboard
+    });
+  } catch (error) {
+    console.error('Error searching TMDb:', error);
+    await telegramService.sendMessage(chatId, '❌ Failed to search TMDb. Please try again.');
+  }
+};
+
+/**
+ * Handle /watchtmdb command - View TMDb movie details
+ */
+const handleTmdbWatch = async (msgOrChatId, tmdbId) => {
+  const chatId = typeof msgOrChatId === 'object' ? msgOrChatId.chat.id : msgOrChatId;
+
+  if (!tmdbId || isNaN(tmdbId)) {
+    await telegramService.sendMessage(chatId, '❌ Please provide a valid TMDb ID.\n\nExample: /watchtmdb 27205');
+    return;
+  }
+
+  try {
+    const movie = await movieService.getTmdbMovieDetails(tmdbId);
+    const message = formatMovieMessage(movie);
+    const posterUrl = movie.poster_path;
+    const { createTmdbMovieKeyboard } = require('../utils/keyboard');
+    const keyboard = createTmdbMovieKeyboard(movie);
+
+    if (posterUrl) {
+      try {
+        await telegramService.sendPhoto(chatId, posterUrl, {
+          caption: message,
+          reply_markup: keyboard
+        });
+      } catch (photoError) {
+        console.warn('Failed to send photo, falling back to text:', photoError.message);
+        await telegramService.sendMessage(chatId, message, {
+          reply_markup: keyboard
+        });
+      }
+    } else {
+      await telegramService.sendMessage(chatId, message, {
+        reply_markup: keyboard
+      });
+    }
+  } catch (error) {
+    console.error('Error in handleTmdbWatch:', error);
+    await telegramService.sendMessage(chatId, '❌ Failed to load TMDb movie details. Please check the ID and try again.');
   }
 };
 
@@ -151,14 +302,17 @@ const handleIncomingMessage = async (msg) => {
     return;
   }
 
-  if (session.state === 'AWAITING_WATCH_URL') {
-    const watchUrl = msg.text.trim();
-    if (!watchUrl.startsWith('http')) {
-      await telegramService.sendMessage(chatId, '⚠️ Please provide a valid URL starting with http:// or https://');
-      return;
-    }
+  const watchUrl = msg.text.trim();
+  if (!watchUrl.startsWith('http')) {
+    return;
+  }
 
-    try {
+  try {
+    if (session.state === 'OPTIONAL_CUSTOM_URL' && session.movieId) {
+      await movieService.updateMovieUrl(session.movieId, watchUrl);
+      sessionService.clearSession(chatId);
+      await telegramService.sendMessage(chatId, `✅ *Watch URL updated!* for movie ID \`${session.movieId}\`.`);
+    } else if (session.state === 'AWAITING_WATCH_URL' && session.movieData) {
       const movieData = {
         ...session.movieData,
         watch_url: watchUrl
@@ -167,11 +321,9 @@ const handleIncomingMessage = async (msg) => {
       const result = await movieService.addMovie(movieData);
       sessionService.clearSession(chatId);
       await telegramService.sendMessage(chatId, `✅ *Success!* Movie imported correctly.\n\n🎬 *${movieData.title}*\nID: \`${result.id}\`\n\nYou can now use \`/post ${result.id}\` to share it!`);
-    } catch (error) {
-      console.error('Error saving imported movie:', error);
-      await telegramService.sendMessage(chatId, '❌ Failed to save the movie. Please try the import process again.');
-      sessionService.clearSession(chatId);
     }
+  } catch (error) {
+    console.error('Error handling incoming URL:', error);
   }
 };
 
@@ -356,32 +508,53 @@ const handleCallbackQuery = async (callbackQuery) => {
     const movieId = data.split(':')[1];
     await telegramService.sendMessage(chatId, '🎬 Loading movie details...');
     await handleWatch(chatId, movieId);
+  } else if (data.startsWith('tmdb_watch:')) {
+    const tmdbId = data.split(':')[1];
+    await telegramService.sendMessage(chatId, '🎬 Loading TMDb movie details...');
+    await handleTmdbWatch(chatId, tmdbId);
+  } else if (data.startsWith('tmdb_search:')) {
+    const query = data.substring('tmdb_search:'.length);
+    await handleTmdbSearch({ chat: { id: chatId } }, [, query]);
   } else if (data.startsWith('import:')) {
     const tmdbId = data.split(':')[1];
     try {
-      await telegramService.sendMessage(chatId, '⚙️ Fetching metadata from TMDb...');
+      await telegramService.sendMessage(chatId, '⚙️ Fetching metadata from TMDb and saving to your collection...');
       const details = await tmdbService.getDetails(tmdbId);
       
-      const year = details.release_date ? new Date(details.release_date).getFullYear() : 'N/A';
+      const year = details.release_date ? new Date(details.release_date).getFullYear() : null;
       const trailer = details.videos && details.videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
       
-      // Store metadata in session
+      const movieData = {
+        title: details.title,
+        description: details.overview,
+        year: year ? parseInt(year) : null,
+        rating: details.vote_average || 0,
+        poster_url: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : null,
+        watch_url: `https://autoembed.co/movie/tmdb/${tmdbId}`,
+        trailer_url: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null
+      };
+
+      const result = await movieService.addMovie(movieData);
+      
+      // Store session in case user wants to immediately replace watch URL with a custom link
       sessionService.setSession(chatId, {
-        state: 'AWAITING_WATCH_URL',
-        movieData: {
-          title: details.title,
-          description: details.overview,
-          year: year === 'N/A' ? null : parseInt(year),
-          rating: details.vote_average,
-          poster_url: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : null,
-          trailer_url: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null
-        }
+        state: 'OPTIONAL_CUSTOM_URL',
+        movieId: result.id
       });
 
-      await telegramService.sendMessage(chatId, `✅ *Metadata Fetched!*\n\n🎬 Title: ${details.title}\n📅 Year: ${year}\n\nNow, please send the **Watch URL** (the link where you want users to watch the movie):`);
+      const message = `✅ *Success! Movie Imported to Local Collection*\n\n` +
+        `🎬 *${escapeMarkdown(movieData.title)}* (${year || 'N/A'})\n` +
+        `🆔 Local ID: \`${result.id}\`\n` +
+        `⭐ Rating: ${Number(movieData.rating).toFixed(1)}/10\n` +
+        `📺 Stream Link: Configured (Server 1 & 2)\n\n` +
+        `👉 Send \`/post ${result.id}\` to post it to your channel!\n` +
+        `👉 Send \`/mymovies\` to view your updated list.\n` +
+        `👉 (Optional) Reply with any URL starting with \`http://\` to change the watch link.`;
+
+      await telegramService.sendMessage(chatId, message);
     } catch (error) {
       console.error('Error fetching TMDb details for import:', error);
-      await telegramService.sendMessage(chatId, '❌ Failed to fetch movie details. Please try again.');
+      await telegramService.sendMessage(chatId, '❌ Failed to import movie. Please try again.');
     }
   } else if (data.startsWith('delete:')) {
     const movieIdStr = data.split(':')[1];
@@ -418,7 +591,12 @@ const registerCommands = () => {
 
   bot.onText(/\/start/, handleStart);
   bot.onText(/\/help/, handleHelp);
+  bot.onText(/\/mymovies/, handleMyMovies);
+  bot.onText(/\/list/, handleMyMovies);
   bot.onText(/\/trending/, handleTrending);
+  bot.onText(/\/tmdbtrending/, handleTmdbTrending);
+  bot.onText(/\/tmdb (.+)/, handleTmdbSearch);
+  bot.onText(/\/watchtmdb (\d+)/, (msg, match) => handleTmdbWatch(msg, match[1]));
   bot.onText(/\/search (.+)/, handleSearch);
   bot.onText(/\/watch (\d+)/, (msg, match) => handleWatch(msg, match[1]));
   bot.onText(/\/addmovie (.+)/, handleAddMovie);
@@ -440,10 +618,15 @@ module.exports = {
   registerCommands,
   handleStart,
   handleHelp,
+  handleMyMovies,
   handleTrending,
+  handleTmdbTrending,
   handleSearch,
+  handleTmdbSearch,
   handleWatch,
+  handleTmdbWatch,
   handlePost,
   handleAddMovie,
   handleImport
 };
+

@@ -4,38 +4,85 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="referrer" content="no-referrer" />
     <title>Movie Player</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
-      body,
-      html {
+      * {
+        box-sizing: border-box;
+      }
+      html, body {
         margin: 0;
         padding: 0;
-        width: 100%;
-        height: 100%;
+        width: 100vw;
+        height: 100vh;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
         overflow: hidden;
         background-color: #000;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-          Arial, sans-serif;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       }
       #player-container {
         width: 100%;
         height: 100%;
-        position: relative;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #000;
+        overflow: hidden;
       }
-      iframe,
-      video {
+      iframe, video {
+        position: absolute;
+        top: 0;
+        left: 0;
         width: 100%;
         height: 100%;
         border: none;
         display: none;
+        background: #000;
+      }
+      .server-bar {
+        display: none;
+        position: absolute;
+        top: 10px;
+        left: 0;
+        right: 0;
+        z-index: 30;
+        justify-content: center;
+        gap: 6px;
+        padding: 0 10px;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      .server-btn {
+        background: rgba(15, 23, 42, 0.85);
+        color: #cbd5e1;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 18px;
+        padding: 6px 12px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        transition: all 0.2s;
+        flex-shrink: 0;
+      }
+      .server-btn.active {
+        background: #3b82f6;
+        color: white;
+        border-color: #60a5fa;
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
       }
       .status-container {
         position: absolute;
@@ -49,167 +96,289 @@
         align-items: center;
         color: white;
         text-align: center;
-        z-index: 10;
+        z-index: 20;
         padding: 20px;
-        box-sizing: border-box;
+        background: #000;
+        transition: opacity 0.3s ease;
       }
       .loader {
-        border: 4px solid #333;
-        border-top: 4px solid #3498db;
+        border: 3px solid rgba(255, 255, 255, 0.15);
+        border-top: 3px solid #3b82f6;
         border-radius: 50%;
         width: 40px;
         height: 40px;
-        animation: spin 1s linear infinite;
-        margin-bottom: 20px;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 14px;
       }
       @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
-          transform: rotate(360deg);
-        }
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .status-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 6px;
+      }
+      .status-hint {
+        font-size: 12px;
+        color: #94a3b8;
+        max-width: 260px;
+        line-height: 1.4;
+      }
+      .play-overlay {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 15;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.4);
+        cursor: pointer;
+      }
+      .play-circle {
+        width: 68px;
+        height: 68px;
+        background: #3b82f6;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 28px;
+        color: white;
+        padding-left: 4px;
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+      }
+      .play-label {
+        color: white;
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 12px;
       }
       .error-icon {
-        font-size: 50px;
+        font-size: 40px;
         margin-bottom: 10px;
       }
-      .error-details {
-        font-size: 12px;
-        color: #888;
-        margin-top: 10px;
-        max-width: 80%;
-        word-break: break-all;
-      }
       .retry-btn {
-        margin-top: 20px;
-        padding: 10px 20px;
-        background-color: #3498db;
+        margin-top: 16px;
+        padding: 9px 20px;
+        background-color: #3b82f6;
         border: none;
-        border-radius: 5px;
+        border-radius: 18px;
         color: white;
+        font-weight: 600;
+        font-size: 12px;
         cursor: pointer;
       }
     </style>
   </head>
   <body>
     <div id="player-container">
-      <div id="status" class="status-container">
-        <div class="loader"></div>
-        <div id="status-text">Loading movie...</div>
+      <!-- Server Switcher -->
+      <div id="server-bar" class="server-bar">
+        <button class="server-btn active" id="btn-autoembed" onclick="switchServer('autoembed')">⚡ Server 1</button>
+        <button class="server-btn" id="btn-vidsrc" onclick="switchServer('vidsrc')">📺 Server 2</button>
+        <button class="server-btn" id="btn-multiembed" onclick="switchServer('multiembed')">🌐 Server 3</button>
+        <button class="server-btn" id="btn-2embed" onclick="switchServer('2embed')">🍿 Server 4</button>
       </div>
 
+      <!-- Loading / Status -->
+      <div id="status" class="status-container">
+        <div class="loader"></div>
+        <div id="status-title" class="status-title">Loading movie...</div>
+        <div id="status-hint" class="status-hint">Please wait a moment</div>
+      </div>
+
+      <!-- Touch to Play Overlay for Direct MP4 -->
+      <div id="play-overlay" class="play-overlay" onclick="startPlay()">
+        <div class="play-circle">▶</div>
+        <div class="play-label">Tap to Play</div>
+      </div>
+
+      <!-- Embed Player -->
       <iframe
         id="video-iframe"
         allowfullscreen
         webkitallowfullscreen
         mozallowfullscreen
-        allow="autoplay; fullscreen; picture-in-picture"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
       ></iframe>
 
-      <video id="video-player" controls playsinline preload="auto"></video>
+      <!-- Native Video Player -->
+      <video
+        id="video-player"
+        controls
+        playsinline
+        webkit-playsinline
+        preload="auto"
+        x-webkit-airplay="allow"
+      ></video>
     </div>
 
     <script>
-      const webapp = window.Telegram.WebApp;
-      webapp.ready();
-      webapp.expand();
+      // Prevent popups
+      window.open = function () {
+        return null;
+      };
+
+      const webapp = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+      if (webapp) {
+        webapp.ready();
+        webapp.expand();
+      }
 
       const urlParams = new URLSearchParams(window.location.search);
-      const movieId = urlParams.get("id");
-      const directUrl = decodeURIComponent(urlParams.get("url") || "");
+      let movieId = urlParams.get("tmdb_id") || urlParams.get("id") || "";
+      const rawUrl = urlParams.get("url") || "";
+      const directUrl = decodeURIComponent(rawUrl);
+
+      // Extract TMDb ID if available in URL
+      if (directUrl) {
+        const match = directUrl.match(/(?:movie(?:\/tmdb)?\/|embed\/movie\/|video_id=)(\d+)/);
+        if (match && (!movieId || isNaN(movieId) || Number(movieId) < 100)) {
+          movieId = match[1];
+        }
+      }
 
       const iframe = document.getElementById("video-iframe");
       const video = document.getElementById("video-player");
       const status = document.getElementById("status");
-      const statusText = document.getElementById("status-text");
+      const statusTitle = document.getElementById("status-title");
+      const statusHint = document.getElementById("status-hint");
+      const playOverlay = document.getElementById("play-overlay");
+      const serverBar = document.getElementById("server-bar");
 
       function showError(msg, details = "") {
         status.style.display = "flex";
+        status.style.opacity = "1";
         status.innerHTML = `
           <div class="error-icon">⚠️</div>
-          <div>${msg}</div>
-          ${details ? `<div class="error-details">${details}</div>` : ""}
+          <div class="status-title">${msg}</div>
+          ${details ? `<div class="status-hint">${details}</div>` : ""}
           <button class="retry-btn" onclick="location.reload()">Retry</button>
         `;
       }
 
       function hideStatus() {
-        status.style.display = "none";
+        status.style.opacity = "0";
+        setTimeout(() => {
+          status.style.display = "none";
+        }, 250);
+      }
+
+      function showPlayOverlay() {
+        playOverlay.style.display = "flex";
+      }
+
+      function hidePlayOverlay() {
+        playOverlay.style.display = "none";
+      }
+
+      function startPlay() {
+        hidePlayOverlay();
+        hideStatus();
+        video.play().catch(() => {});
       }
 
       function isDirectVideo(url) {
         if (!url) return false;
-        // Check for common video extensions
-        const videoExtensions = [
-          ".mp4",
-          ".m4v",
-          ".webm",
-          ".ogv",
-          ".mov",
-          ".mkv",
-        ];
+        const videoExtensions = [".mp4", ".m4v", ".webm", ".ogv", ".mov", ".mkv", ".m3u8"];
         const urlWithoutQuery = url.split("?")[0].toLowerCase();
         return videoExtensions.some((ext) => urlWithoutQuery.endsWith(ext));
       }
 
       try {
         if (directUrl && isDirectVideo(directUrl)) {
-          // It's a direct video file, use <video> tag
+          // Direct MP4 / M3U8 Video
           video.style.display = "block";
-          video.src = directUrl;
 
-          video.oncanplay = () => {
+          const onReady = () => {
             hideStatus();
-            video.play().catch((e) => console.log("Autoplay prevented"));
+            video.play().catch(() => {
+              showPlayOverlay();
+            });
           };
+
+          video.addEventListener("loadedmetadata", onReady);
+          video.addEventListener("loadeddata", onReady);
+          video.addEventListener("canplay", onReady);
+          video.addEventListener("playing", () => {
+            hideStatus();
+            hidePlayOverlay();
+          });
+
+          setTimeout(() => {
+            hideStatus();
+            if (video.paused) {
+              showPlayOverlay();
+            }
+          }, 1000);
+
+          if (directUrl.includes(".m3u8") && window.Hls && Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(directUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, onReady);
+          } else {
+            video.src = directUrl;
+          }
 
           video.onerror = () => {
-            let errorMsg = "Failed to load video.";
-            let technical = "";
-            if (video.error) {
-              switch (video.error.code) {
-                case 1:
-                  technical = "MEDIA_ERR_ABORTED";
-                  break;
-                case 2:
-                  technical = "MEDIA_ERR_NETWORK";
-                  break;
-                case 3:
-                  technical = "MEDIA_ERR_DECODE";
-                  break;
-                case 4:
-                  technical = "MEDIA_ERR_SRC_NOT_SUPPORTED";
-                  break;
-                default:
-                  technical = "Unknown error code: " + video.error.code;
-              }
-            }
-            showError(
-              "This video source is currently unavailable.",
-              `Error: ${technical}<br>Source: ${directUrl}`,
-            );
+            showError("Video playback error.", "Tap retry or use another server.");
           };
         } else if (directUrl || movieId) {
-          // It's an embed URL or we have a movie ID for vidsrc
-          let embedUrl = directUrl;
-          if (!embedUrl && movieId) {
-            embedUrl = `https://vidsrc.xyz/embed/movie/${movieId}`;
+          // Embed Scraper Stream (Default to AutoEmbed)
+          let embedUrl = `https://autoembed.co/movie/tmdb/${movieId}`;
+
+          // If directUrl is already a valid non-vidlink embed, use it
+          if (directUrl && !directUrl.includes("vidlink.pro") && !directUrl.includes("vidsrc.xyz")) {
+            embedUrl = directUrl;
           }
 
           iframe.style.display = "block";
           iframe.src = embedUrl;
 
-          // Iframe load event is not reliable for content success,
-          // but we can hide the loader after some time
-          iframe.onload = () => {
-            setTimeout(hideStatus, 2000);
-          };
+          if (movieId) {
+            serverBar.style.display = "flex";
+          }
+
+          // Dismiss loading screen quickly so iframe renders
+          setTimeout(hideStatus, 800);
+          iframe.onload = () => hideStatus();
         } else {
-          showError("Movie source not found.");
+          showError("No movie source found.");
         }
       } catch (err) {
-        showError("An unexpected error occurred.");
+        showError("Unable to load movie.", err.message);
+      }
+
+      function switchServer(name) {
+        document.querySelectorAll(".server-btn").forEach((btn) => btn.classList.remove("active"));
+        const btn = document.getElementById("btn-" + name);
+        if (btn) btn.classList.add("active");
+
+        let targetUrl = "";
+        if (name === "autoembed") {
+          targetUrl = `https://autoembed.co/movie/tmdb/${movieId}`;
+        } else if (name === "vidsrc") {
+          targetUrl = `https://vidsrc.to/embed/movie/${movieId}`;
+        } else if (name === "multiembed") {
+          targetUrl = `https://multiembed.mov/?video_id=${movieId}&tmdb=1`;
+        } else if (name === "2embed") {
+          targetUrl = `https://www.2embed.cc/embed/${movieId}`;
+        }
+
+        if (targetUrl) {
+          status.style.display = "flex";
+          status.style.opacity = "1";
+          statusTitle.textContent = "Connecting to server...";
+          iframe.src = targetUrl;
+          setTimeout(hideStatus, 1000);
+        }
       }
     </script>
   </body>

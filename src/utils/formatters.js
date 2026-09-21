@@ -43,6 +43,14 @@ const formatMovieMessage = (movie) => {
     }
   }
   
+  // Check if movie is unreleased
+  if (movie.release_date) {
+    const releaseDateObj = new Date(movie.release_date);
+    if (!isNaN(releaseDateObj.getTime()) && releaseDateObj > new Date()) {
+      message += `\n⚠️ *Unreleased Movie:* Premieres ${movie.release_date}. Free streaming servers may not have video available yet.\n`;
+    }
+  }
+
   message += `\n🆔 ID: \`${movie.id}\``;
   
   return message;
@@ -51,20 +59,21 @@ const formatMovieMessage = (movie) => {
 /**
  * Format movie list for Telegram
  */
-const formatMovieList = (movies, limit = 10) => {
+const formatMovieList = (movies, limit = 10, titleHeader = 'Movies') => {
   if (!movies || movies.length === 0) {
     return '❌ No movies found.';
   }
   
-  let message = '🎬 *Movies:*\n\n';
+  let message = `🎬 *${titleHeader}:*\n\n`;
   
   movies.slice(0, limit).forEach((movie, index) => {
     const title = movie.title || 'Unknown';
     const year = movie.release_date ? new Date(movie.release_date).getFullYear() : 'N/A';
-    const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
+    const rating = movie.vote_average ? Number(movie.vote_average).toFixed(1) : 'N/A';
+    const prefix = movie.source === 'tmdb' ? 'TMDb ID' : 'ID';
     
     message += `${index + 1}. *${escapeMarkdown(title)}* (${year}) - ⭐ ${rating}\n`;
-    message += `   ID: \`${movie.id}\`\n\n`;
+    message += `   ${prefix}: \`${movie.id}\`\n\n`;
   });
   
   if (movies.length > limit) {

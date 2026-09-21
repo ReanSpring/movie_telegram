@@ -23,6 +23,14 @@ class DbMovieService {
   }
 
   /**
+   * Get all movies from local database
+   */
+  async getAllMovies(limit = 100) {
+    const stmt = db.prepare('SELECT * FROM movies ORDER BY id ASC LIMIT ?');
+    return stmt.all(limit);
+  }
+
+  /**
    * Search for movies by title
    */
   async searchMovies(query) {

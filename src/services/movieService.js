@@ -1,5 +1,6 @@
 const config = require('../config/config');
 const dbMovieService = require('./dbMovieService');
+const tmdbService = require('./tmdbService');
 
 class MovieService {
   constructor() {
@@ -9,19 +10,57 @@ class MovieService {
   }
 
   /**
-   * Get trending movies (from local DB)
+   * Get trending movies (from local DB or TMDb)
    */
-  async getTrendingMovies(page = 1) {
+  async getTrendingMovies(page = 1, source = 'local') {
+    if (source === 'tmdb') {
+      return await this.getTmdbTrending(page);
+    }
     const movies = await dbMovieService.getTrendingMovies();
     return movies.map(m => dbMovieService.formatForBot(m));
   }
 
   /**
-   * Search for movies (from local DB)
+   * Get all movies from local database
    */
-  async searchMovies(query, page = 1) {
+  async getAllLocalMovies(limit = 100) {
+    const movies = await dbMovieService.getAllMovies(limit);
+    return movies.map(m => dbMovieService.formatForBot(m));
+  }
+
+  /**
+   * Search for movies (from local DB or TMDb)
+   */
+  async searchMovies(query, page = 1, source = 'local') {
+    if (source === 'tmdb') {
+      return await this.searchTmdb(query, page);
+    }
     const movies = await dbMovieService.searchMovies(query);
     return movies.map(m => dbMovieService.formatForBot(m));
+  }
+
+  /**
+   * Get trending movies directly from TMDb
+   */
+  async getTmdbTrending(page = 1) {
+    const results = await tmdbService.getTrending('day', page);
+    return results.map(m => tmdbService.formatTmdbMovie(m));
+  }
+
+  /**
+   * Search movies directly on TMDb
+   */
+  async searchTmdb(query, page = 1) {
+    const results = await tmdbService.searchTmdb(query, page);
+    return results.map(m => tmdbService.formatTmdbMovie(m));
+  }
+
+  /**
+   * Get movie details from TMDb
+   */
+  async getTmdbMovieDetails(tmdbId) {
+    const details = await tmdbService.getDetails(tmdbId);
+    return tmdbService.formatTmdbMovie(details);
   }
 
   /**

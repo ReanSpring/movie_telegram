@@ -95,60 +95,32 @@ The server will start on `http://localhost:3000` and the Telegram bot will begin
 
 Open a chat with your bot and use these commands:
 
-- `/start` - Welcome message and command list
-- `/help` - Show available commands
+#### Local Database
 - `/trending` - Get recently added movies from your local database
-- `/search <movie name>` - Search your local collection
-- `/addmovie title|description|year|rating|poster_url|watch_url|trailer_url` - Add a new movie
+- `/search <movie name>` - Search your local collection (with 1-tap option to search TMDb if not found)
 - `/watch <movie id>` - View movie details and buttons
 - `/post <movie id>` - Post a movie to your channel
+- `/addmovie title|description|year|rating|poster_url|watch_url|trailer_url` - Add a new movie manually
+- `/editurl <movie id> <url>` - Update the watch URL of a local movie
+- `/deletemovie <movie id>` - Delete a movie from local database
+
+#### TMDb Integration
+- `/tmdbtrending` - Fetch top trending movies directly from TMDb
+- `/tmdb <movie name>` - Search any movie on TMDb
+- `/watchtmdb <tmdbId>` - View TMDb movie details, trailer, and stream link
+- `/import <movie name>` - Search TMDb and interactively import to your database
 
 ### API Endpoints
 
-#### Get Trending Movies
+#### TMDb Endpoints
+- **Get TMDb Trending**: `GET http://localhost:3000/api/movies/tmdb/trending?page=1`
+- **Search TMDb**: `GET http://localhost:3000/api/movies/tmdb/search?q=inception&page=1`
+- **TMDb Movie Details**: `GET http://localhost:3000/api/movies/tmdb/:id`
 
-```bash
-GET http://localhost:3000/api/movies/trending
-```
-
-**Query Parameters:**
-
-- `page` (optional) - Page number (default: 1)
-
-**Example:**
-
-```bash
-curl http://localhost:3000/api/movies/trending?page=1
-```
-
-#### Search Movies
-
-```bash
-GET http://localhost:3000/api/movies/search?q=inception
-```
-
-**Query Parameters:**
-
-- `q` (required) - Search query
-- `page` (optional) - Page number (default: 1)
-
-**Example:**
-
-```bash
-curl "http://localhost:3000/api/movies/search?q=inception"
-```
-
-#### Get Movie Details
-
-```bash
-GET http://localhost:3000/api/movies/:id
-```
-
-**Example:**
-
-```bash
-curl http://localhost:3000/api/movies/27205
-```
+#### Local / Unified Endpoints
+- **Get Trending**: `GET http://localhost:3000/api/movies/trending?source=local` (pass `?source=tmdb` for TMDb)
+- **Search**: `GET http://localhost:3000/api/movies/search?q=inception` (pass `?source=tmdb` for TMDb)
+- **Movie Details**: `GET http://localhost:3000/api/movies/:id`
 
 ## Project Structure
 

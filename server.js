@@ -8,24 +8,34 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
 
-// CORS middleware
+// CORS and Tunnel bypass headers
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('ngrok-skip-browser-warning', 'true');
+  res.header('bypass-tunnel-reminder', 'true');
   next();
 });
+
+app.use(express.static('public'));
 
 // Routes
 app.get('/', (req, res) => {
   res.json({
     message: 'Movie Telegram Bot API',
-    version: '1.0.0',
+    version: '1.1.0',
     endpoints: {
-      trending: '/api/movies/trending',
-      search: '/api/movies/search?q=query',
-      details: '/api/movies/:id'
+      local: {
+        trending: '/api/movies/trending',
+        search: '/api/movies/search?q=query',
+        details: '/api/movies/:id'
+      },
+      tmdb: {
+        trending: '/api/movies/tmdb/trending',
+        search: '/api/movies/tmdb/search?q=query',
+        details: '/api/movies/tmdb/:id'
+      }
     }
   });
 });
